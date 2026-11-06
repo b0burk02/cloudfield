@@ -39,7 +39,7 @@ pad: 2
 
 resolution:
   voxel_pc: 1.0                     # LightCube-grid Edenhofer cube voxel
-  native_ang_deg: 0.23              # Edenhofer+24 angular resolution (approximate; verify)
+  native_ang_deg: 0.23              # Edenhofer+24: 14 arcmin (HEALPix Nside 256)
 
 annotations:
   - {name: "MBM 40", l: 37.52, b: 44.57, offset: [-55, 22]}
