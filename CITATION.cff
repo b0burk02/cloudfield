@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite it AND the data products it is built on:
+  LightCube (Bish et al. 2026, arXiv:2608.27389), Edenhofer et al. 2024 (A&A 685, A82),
+  and any dust map you use for comparison (e.g. DUSTRIBUTION, Dharmawardena et al.).
+title: "cloudfield: incident FUV field and alphaG maps for molecular clouds"
+version: 0.1.0
+type: software
+authors:
+  - family-names: Burkhart
+    given-names: Blakesley
+    email: bburkhart@flatironinstitute.org
+references:
+  - type: article
+    title: "LightCube: A Parsec-Resolution 3D Model of the Local Far-Ultraviolet Interstellar Radiation Field"
+    authors:
+      - family-names: Bish
+        given-names: Hannah V.
+      - name: "et al."
+    year: 2026
+    identifiers:
+      - type: other
+        value: "arXiv:2608.27389"
+  - type: article
+    title: "A parsec-scale Galactic 3D dust map out to 1.25 kpc from the Sun"
+    authors:
+      - family-names: Edenhofer
+        given-names: Gordian
+      - name: "et al."
+    year: 2024
+    journal: "Astronomy & Astrophysics"
+    volume: 685
+    start: A82
