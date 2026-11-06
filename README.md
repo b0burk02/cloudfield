@@ -1,283 +1,340 @@
 # cloudfield
 
 Maps of the incident far-UV field **G0** and the H I-to-H2 transition parameter
-**alphaG** for a molecular cloud with a defined 3D volume. Inputs are the
+**αG** for a molecular cloud with a defined 3D volume. The inputs are the
 LightCube 3D model of the local FUV interstellar radiation field (Bish et al.
-2026) and the Edenhofer et al. (2024) 3D dust map. Any cloud is described by a
-YAML config; Eos (Burkhart et al. 2025) is the worked example.
+2026) and the Edenhofer et al. (2024) 3D dust map. Each cloud is described by a
+YAML config file. Eos (Burkhart et al. 2025) is the worked example.
 
-> **First thing to run:** `cloudfield check-data` (see [Data](#2-inputs) and
-> [data/README.md](data/README.md)). No data products are in this repository.
+> **No data products are in this repository.** Download them as described in
+> [data/README.md](data/README.md), then run `cloudfield check-data` first.
+
+**Contents:**
+[1. Quantities](#1-what-is-computed) ·
+[2. Inputs](#2-inputs-and-why-both-come-from-edenhofer) ·
+[3. Method](#3-method-step-by-step) ·
+[4. Dust-to-gas conversion](#4-dust-to-gas-conversion) ·
+[5. Eos](#5-worked-example-eos) ·
+[6. Limitations](#6-limitations) ·
+[7. Verification](#7-verification-against-bish-et-al-2026) ·
+[8. Running](#8-installation-and-running) ·
+[9. New clouds](#9-adding-a-new-cloud) ·
+[Citing](#citing)
 
 ---
 
-## 1. What it produces
+## 1. What is computed
 
-For every sightline (pixel) on a Galactic (l, b) grid, the code finds where the
-ray enters the cloud (r0), where its dust density peaks (r_peak) and where it
-leaves (r1). It then reports:
+**G0** is the far-UV (912–2000 Å) radiation field incident on the cloud, written
+I_UV and measured in units of the **Draine (1978) Standard ISRF** (I_UV = 1 is
+the Draine field).
 
-| Map | Meaning |
-|---|---|
-| `G0_SURFACE` | I_UV at r0: the field incident on the cloud surface |
-| `G0_PEAK` | I_UV at r_peak |
-| `N_SURFACE`, `N_PEAK` | n_H at r0 and at r_peak [cm^-3] |
-| `ALPHAG_PEAK` (primary), `ALPHAG_SURFACE` | alphaG = 59 I_UV / n at r_peak and at r0 |
-| `NH_CLOUD` | ∫ n dr from r0 to r1 [cm^-2] |
-| `NH_FULL` | ∫ n dr over the whole sampled ray [cm^-2] |
-| `R0`, `RPEAK`, `R1`, `THICKNESS` | boundary radii [pc] |
-| `ALPHAG_LOSMEAN`, `RATIO_SURF_LOSMEAN` | old slab estimator 59 ⟨I⟩_n/⟨n⟩_n (comparison only) |
-| `QUAL_NPEAK`, `QUAL_RPEAK_INTERIOR` | quality masks |
-| `BOUNDARY_FLAGS`, `BOUNDARY_METHOD` | per-pixel diagnostics of the boundary finder |
-| region extension (e.g. `CLOUD_H2_10PCT`) | the pixels statistics are quoted over |
+**αG** sets the structure of the H I-to-H2 transition in the analytic theory of
+Sternberg et al. (2014). We use Bialy & Sternberg (2016), **Eq. 22**, for H2
+formation on dust grains:
 
-**alphaG.** Following Sternberg et al. (2014) and Bialy & Sternberg (2016),
+```math
+\alpha G \;=\; 0.59\; I_{\rm UV} \left(\frac{100\ {\rm cm^{-3}}}{n}\right)\left(\frac{9.9}{1+8.9\,\tilde\sigma_g}\right)^{0.37}
+\;=\; \frac{59\, I_{\rm UV}}{n/{\rm cm^{-3}}}\qquad (\tilde\sigma_g = 1)
+```
 
-    alphaG = 0.59 I_UV (100 cm^-3 / n) [9.9 / (1 + 8.9 σ̃_g)]^0.37  =  59 I_UV / n
-
-for σ̃_g = 1 (σ_g = 1.9e-21 cm² per H nucleus, solar metallicity).
-
-* **I_UV** is the free-space FUV field in units of the **Draine (1978) Standard
-  ISRF**.
-* **n** is the **total hydrogen-nucleus density, n_HI + 2 n_H2**, not the atomic
+* σ̃_g = σ_g / 1.9×10⁻²¹ cm² is the Lyman-Werner dust absorption cross-section per
+  hydrogen nucleus, relative to the standard Galactic value (Bialy & Sternberg
+  2016, Eqs. 5–6). We take σ̃_g = 1: σ_g = 1.9×10⁻²¹ cm², solar metallicity.
+* **n is the TOTAL hydrogen-nucleus density, n = n_HI + 2 n_H2**, not the atomic
   density.
-* **Reading the value.** alphaG ≫ 1 means the H I shielding layer dominates (a
-  sharp H I-to-H2 transition, large H I column). alphaG ≲ 1 means dust shielding
-  dominates.
+* The total H I column of the transition layer is
+  N_HI,tot = σ_g⁻¹ ln(αG/2 + 1) (Bialy & Sternberg 2016, Eq. 18).
+  * αG ≫ 1: H I self-shielding dominates (a thick H I layer).
+  * αG ≲ 1: dust shielding dominates.
 
-Outputs: `<prefix>_G0.fits`, `<prefix>_alphaG.fits`, `<prefix>_maps.fits` (all
-with a Galactic CAR WCS), and `<prefix>_maps.png`.
+For every pixel of a Galactic (l, b) grid the pipeline writes:
 
-## 2. Inputs
+| Map (FITS extension) | Meaning |
+|---|---|
+| `G0_SURFACE` | I_UV at the cloud's near-side boundary r0: the field incident on the surface |
+| `G0_PEAK` | I_UV at the density peak r_peak |
+| `N_SURFACE`, `N_PEAK` | n at r0 and at r_peak [cm⁻³] |
+| `ALPHAG_PEAK` (primary), `ALPHAG_SURFACE` | 59 I_UV/n evaluated at r_peak and at r0 |
+| `NH_CLOUD` | ∫ n dr from r0 to r1 [cm⁻²] |
+| `NH_FULL` | ∫ n dr over the whole sampled ray [cm⁻²] |
+| `R0`, `RPEAK`, `R1`, `THICKNESS` | boundary radii [pc] |
+| `ALPHAG_LOSMEAN`, `RATIO_SURF_LOSMEAN` | the old slab estimator, kept for comparison only |
+| `QUAL_NPEAK`, `QUAL_RPEAK_INTERIOR`, region | quality masks, and the pixels statistics are quoted over |
+| `BOUNDARY_FLAGS`, `BOUNDARY_METHOD` | per-pixel diagnostics of the boundary finder |
 
-* **I_UV:** LightCube, the **combined 912–2000 Å cube**. It is already normalized
-  to the Draine field (header `BUNIT = 'Draine78 ISRF'`) and needs **no
-  rescaling**.
-  * Diagnostic for any new file: the mean over voxels within 25 pc of the cube
-    origin must be **0.633** (Bish et al. 2026 §III.1). We measure 0.6307.
-  * A per-band cube instead of the combined one gets alphaG wrong by orders of
-    magnitude with no error raised. `cloudfield check-data` and every run check
-    for this.
-* **n:** the Edenhofer et al. (2024) map, as tau_1565 per pc on the LightCube grid.
+## 2. Inputs, and why both come from Edenhofer
+
+| Quantity | Source | Form used |
+|---|---|---|
+| I_UV | **LightCube** (Bish et al. 2026) | combined 912–2000 Å cube, already Draine-normalized (`BUNIT = 'Draine78 ISRF'`), 1 pc voxels |
+| n | **Edenhofer et al. (2024)** 3D dust | τ₁₅₆₅ per pc on the LightCube grid, converted to n (Section 4) |
+
 * **Both I_UV and n come from Edenhofer dust.** LightCube's radiative transfer was
-  computed through the Edenhofer map, so pairing its I_UV with any other dust map
-  would be inconsistent. The code raises if asked to.
-  * DUSTRIBUTION (Dharmawardena et al.) is supported **only for column-density
-    comparison** (`cloudfield/columns.py`).
+  computed *through the Edenhofer map*, so the field it predicts at a point
+  already includes extinction by exactly that dust. Pairing LightCube's I_UV with
+  a density from another dust map would put the cloud surface, and the
+  attenuation the field has experienced, in inconsistent places. The code raises
+  if asked to make maps from any other dust source.
+  * DUSTRIBUTION (Dharmawardena et al.) is supported only for column-density
+    comparison.
+* **No rescaling of I_UV.** The LightCube combined cube is already in Draine units.
+  To check a new file: the mean over voxels within 25 pc of the cube origin must
+  be **0.633** (Bish et al. 2026 §III.1); we measure 0.6307.
+  * Using one of the single-band TD1 cubes instead (erg cm⁻³ Å⁻¹) would make αG
+    wrong by orders of magnitude, with nothing else raising an error.
+    `cloudfield check-data` and every run check BUNIT and the solar value to
+    catch this.
 
-Where to download each file, and which one: [data/README.md](data/README.md).
+## 3. Method, step by step
 
-## 3. Method
+1. **Ray casting.** Every pixel centre (l, b) defines a ray from the Sun. The cubes
+   are heliocentric Galactic Cartesian, and a point at distance r on the ray is
 
-1. **Rays.** Each (l, b) pixel centre defines a ray from the Sun. It is sampled
-   every `dr` (0.25 pc for Eos) between `r_min` and `r_max`. Both cubes are
-   trilinearly interpolated at x = r cos b cos l, y = r cos b sin l, z = r sin b.
-   r < 69 pc is masked (no Edenhofer dust there).
-2. **Dust units first.** All geometry (the peak, r0, r1) and the quality cut are
-   decided on the dust profile tau_1565(r), never on n. The gas conversion
-   (Section 4) only scales values, so changing it cannot move a boundary or change
-   which pixels pass. The quality cut is tau_1565,peak ≥ 9.196e-4 pc^-1 (n_peak =
-   0.3 cm^-3 under the default conversion).
-3. **Boundaries.** A pluggable method returns r0, r_peak and r1 per pixel, plus
-   flags; see [docs/BOUNDARIES.md](docs/BOUNDARIES.md).
-   * `half_max`: peak in a distance window; r0 and r1 are the near and far
-     half-maximum crossings. The Eos default.
-   * `fixed_range`, `nearest_peak` (multi-component profiles).
-   * `mask3d`: an externally supplied 3D volume. Its interface and segment rules
-     are fixed; its file loader is pending a real mask.
+   ```math
+   x = r\cos b\cos l,\qquad y = r\cos b\sin l,\qquad z = r\sin b .
+   ```
 
-   Every pixel records which method produced its boundary and whether the profile
-   was multi-peaked, or the boundary hit a search edge.
-4. **Read the field at the surface.** G0_surface = I_UV(r0). alphaG describes the
-   field that *arrives at* the cloud. A density-weighted average of I_UV along
-   the sightline (the old slab estimator, kept as `ALPHAG_LOSMEAN`) mixes in field
-   values from in front of and behind the cloud. For Eos it differs from the
-   surface value by a factor of 1.24 (median; 16–84%: 1.10–1.38). That difference
-   correlates with cloud thickness (Spearman ρ = 0.70), so it is a structured bias,
-   not noise.
-5. **Attenuation test.** G0_surface/G0_peak is compared with the per-voxel noise
-   of the LightCube cube, which is estimated robustly from relative first
-   differences. It is also compared with the ratio expected from the large-scale
-   radial gradient alone. For Eos: median 1.05 (16–84%: 0.95–1.16) against a
-   two-voxel noise of 0.12 and a trend prediction of 1.02. **No attenuation is
-   detected between r0 and the density peak.**
-6. **Grid and resolution.** The sky pixel is configurable, either fixed in degrees
-   or fixed in parsecs at a reference distance. The effective resolution of the
-   dust map at distance d is max(voxel size, d × native angular resolution). The
-   run warns, and writes `OVERSAMP` to the headers, when pixels are finer than
-   that. Eos uses 0.1° = 0.21 pc at 117.5 pc against a 1 pc effective resolution,
-   so it is **oversampled ×4.9**: neighbouring pixels are not independent.
+   The Sun is at voxel index 499.5 on each axis (from the LightCube header).
+2. **Radial sampling.** Each ray is sampled every Δr (0.25 pc for Eos) from r_min
+   to r_max. Both cubes are interpolated trilinearly. r < 69 pc is masked, because
+   the Edenhofer map contains no dust there.
+3. **Geometry is decided in dust units.** The peak and both boundaries are found
+   on the dust profile τ₁₅₆₅(r), never on n. So is the quality cut: a sightline
+   has a cloud if τ₁₅₆₅,peak ≥ 9.196×10⁻⁴ pc⁻¹, i.e. n_peak = 0.3 cm⁻³ under the
+   default conversion. The gas conversion therefore cannot move a boundary or
+   change which pixels pass.
+4. **Boundaries r0, r_peak, r1.** The default method for a single clean cloud is
+   `half_max`:
+   * r_peak = argmax τ(r) within a distance window (90–145 pc for Eos);
+   * r0 = the largest r < r_peak with τ < τ_peak/2 (the near-side half-maximum
+     crossing);
+   * r1 = the smallest r > r_peak with τ < τ_peak/2 (the far side).
+
+   r0 and r1 may lie outside the search window. Other methods are `fixed_range`,
+   `nearest_peak` (multi-component profiles) and `mask3d` (an externally supplied
+   3D cloud volume). Every pixel records which method produced its boundary, plus
+   flags for multi-peaked profiles and boundaries on a search edge. See
+   [docs/BOUNDARIES.md](docs/BOUNDARIES.md).
+5. **Read the field AT the surface.** G0_surface = I_UV(r0) and
+   αG_surface = 59 I_UV(r0)/n(r0). αG describes the field *arriving at* the cloud.
+   A density-weighted average of I_UV along the sightline (the earlier slab
+   estimator, 59 ⟨I_UV⟩ₙ/⟨n⟩ₙ) mixes in field values from gas in front of and
+   behind the cloud. For Eos the two differ by a factor of 1.24 (median), and the
+   difference correlates with cloud thickness (Spearman ρ = 0.70), so it is a
+   structured bias, not noise. The slab estimator is kept only as
+   `ALPHAG_LOSMEAN`.
+6. **Peak values.** G0_peak = I_UV(r_peak) and αG_peak = 59 I_UV(r_peak)/n_peak.
+   αG_peak is the primary map.
+7. **Attenuation test.** G0_surface/G0_peak is compared with two things: the
+   per-voxel noise of LightCube (a robust estimate from relative first
+   differences), and the ratio expected from the field's large-scale radial
+   gradient alone.
+8. **Columns.** NH_cloud = ∫_{r0}^{r1} n dr, and NH_full = ∫ n dr over the whole
+   sampled ray.
+9. **Resolution.** The sky pixel is set either in degrees or in parsecs at a
+   reference distance. At distance d the dust map's effective resolution is
+   max(voxel size, d × 14′). A run warns, and writes `OVERSAMP` to every header,
+   when pixels are finer than that.
 
 ## 4. Dust-to-gas conversion
 
-The cube holds tau_1565/pc. A gas conversion quoted per E/pc or per A_V/pc maps to
-it through tau_1565 = E × 2.8 × A_1565/A_V / 1.086. Here A_1565/A_V = **2.703**,
-from Gordon et al. (2023), R_V = 3.1, via `dust_extinction` 1.5. Full arithmetic:
-[docs/METHOD.md](docs/METHOD.md).
+The cube holds τ₁₅₆₅ per pc. LightCube built it from Edenhofer's native E per pc,
+where E is the extinction unit of Zhang, Green & Rix (2023), via:
 
-| Option | n_H per (tau_1565/pc) | per (E/pc) | implied N_H/A_V [cm^-2/mag] | Source |
-|---|---|---|---|---|
-| **`lightcube`** (default) | **326.2** | 2273.6 | 2.51e21 (1.34 × Bohlin) | Bish et al. 2026 §III.3: 812 cm^-3 per (A_V/pc) |
-| `zucker21` | 237.0 | 1652 | 1.82e21 | Zucker 2021 / O'Neill 2024 / McCallum 2025 route |
-| `hensley_draine23` | 387.4 | 2700 | 2.98e21 | Hensley & Draine (2023) route |
-| `sigma1565_legacy` | 257.2 | 1792 | 1.98e21 | σ_1565 = 1.26e-21 cm²/H (Bohlin with an assumed A_1565/A_V = 2.6) |
+| Step | Constant | Value | Source |
+|---|---|---|---|
+| E → A_V | A_V / E | **2.8** | Zhang et al. (2023), adopted by Edenhofer et al. (2024) |
+| A_V → A₁₅₆₅ | A₁₅₆₅ / A_V | **2.7032** | Gordon et al. (2023) "G23" curve at R_V = 3.1, via `dust_extinction` 1.5 |
+| A → τ | A / τ | **1.086** | 2.5 log₁₀ e |
+| E → τ₁₅₆₅ | τ₁₅₆₅ / E | **6.9695** | product of the above |
+| A_V → n_H | K_AV = n_H / (A_V/pc) | **812 cm⁻³** (default) | Bish et al. (2026) §III.3 |
+| pc → cm | | 3.086×10¹⁸ | |
 
-* **The default, `lightcube`, is not the standard Bohlin value.** Bish et al.
-  attribute 812 cm^-3 per (A_V/pc) to Bohlin et al. (1978), but it implies
-  N_H/A_V = 2.51e21, **~34% above the standard 1.87e21** for R_V = 3.1. It is the
-  default because it is internally consistent with the LightCube cube we sample,
-  not because it matches Bohlin.
-* **The conversion is a single multiplicative scalar on n,** and therefore on
-  alphaG ∝ 1/n. Across these options it spans a factor of 1.63. **It is the
+```math
+n_{\rm H} \;=\; K_\tau\,\frac{\tau_{1565}}{\rm pc},\qquad
+K_\tau \;=\; K_{A_V}\,\frac{1.086}{A_{1565}/A_V}
+\;=\; 812\times\frac{1.086}{2.7032} \;=\; 326.2\ {\rm cm^{-3}}
+```
+
+| Option | n_H per (τ₁₅₆₅/pc) | per (E/pc) | per (A_V/pc) | implied N_H/A_V [cm⁻² mag⁻¹] | Source |
+|---|---|---|---|---|---|
+| **`lightcube`** (default) | **326.2** | 2273.6 | 812 | 2.51×10²¹ (**1.34 × Bohlin**) | Bish et al. 2026 §III.3 |
+| `zucker21` | 237.0 | 1652 | 590 | 1.82×10²¹ | Zucker et al. 2021 / O'Neill et al. 2024 / McCallum et al. 2025 route |
+| `hensley_draine23` | 387.4 | 2700 | 964 | 2.98×10²¹ | Hensley & Draine (2023) route |
+| `sigma1565_legacy` | 257.2 | 1792 | 640 | 1.98×10²¹ | σ₁₅₆₅ = 1.26×10⁻²¹ cm²/H (Bohlin with an assumed A₁₅₆₅/A_V = 2.6) |
+
+* **Bohlin caveat.** Bish et al. (2026) attribute 812 cm⁻³ per (A_V/pc) to Bohlin,
+  Savage & Drake (1978). But it implies N_H/A_V = 2.51×10²¹ cm⁻² mag⁻¹, **~34%
+  above the standard 1.87×10²¹** for R_V = 3.1. It is the default because it is
+  internally consistent with the LightCube cube being sampled, not because it is
+  the Bohlin value.
+* **The conversion is a pure scalar on n, and therefore on αG ∝ 1/n.** It changes
+  no boundary and no quality mask: geometry is decided in dust units, and
+  `scripts/conversion_compare.py` shows the masks are bit-identical across all
+  four options. Across these options it spans a factor of 1.63. **It is the
   largest arbitrary factor in the pipeline.**
-* `scripts/conversion_compare.py` shows that masks and geometry are bit-identical
-  across options, and tabulates what changes.
 
-## 5. Limitations
+Every constant and the full arithmetic: [docs/METHOD.md](docs/METHOD.md).
 
-* **alphaG values are upper limits in clumped gas.** 3D dust reconstructions smooth
-  out dense structure. At MBM 40 the Edenhofer map recovers only 1/3.75 (nearest
-  pixel) to 1/5.4 (0.5° aperture) of the published n_H = 280 cm^-3 (Karoly et
-  al.). alphaG ∝ 1/n there is overestimated by about that factor, and the same
+## 5. Worked example: Eos
+
+Configuration `cloudfield/clouds/eos.yaml`:
+* sky grid l = 20–50°, b = 30–70° at 0.1°;
+* rays 69–260 pc at Δr = 0.25 pc;
+* `half_max` boundaries with r_peak searched in 90–145 pc;
+* statistics quoted inside the FIMS/SPEAR 10% H2/FUV contour, the published Eos
+  boundary (Burkhart et al. 2025, Fig. 1): 32,219 pixels.
+
+| Quantity (inside the contour, default conversion) | Median | 5–95% |
+|---|---|---|
+| G0_surface [Draine] | 0.493 | 0.435–0.554 |
+| G0_peak [Draine] | 0.470 | 0.404–0.538 |
+| n_peak [cm⁻³] | 2.67 | 1.07–9.53 |
+| n_surface [cm⁻³] | 1.32 | 0.53–4.64 |
+| **αG_peak** | **10.3** | 2.6–28.1 |
+| αG_surface | 22.3 | 5.8–57.7 |
+| NH_cloud [cm⁻²] | 1.46×10²⁰ | 0.65–2.24×10²⁰ |
+| NH_full [cm⁻²] | 2.26×10²⁰ | 1.08–3.78×10²⁰ |
+| r0 / r_peak / r1 [pc] | 102.5 / 113.8 / 129.5 | 94–124 / 106–130 / 118–136 |
+| thickness [pc] | 22.0 | 7.8–35.5 |
+
+* **Coverage:** every pixel in the contour passes the quality cut, and in none is
+  r_peak pinned to the edge of the search window.
+* **Pixels below αG = 1:** 339 in the contour (αG_peak), around MBM 40.
+* **Attenuation:** G0_surface/G0_peak has a median of 1.05 (16–84%: 0.95–1.16).
+  The voxel-noise floor is 0.12 and the radial gradient alone predicts 1.02, so
+  **no attenuation is detected between r0 and the density peak.**
+* **Oversampling:** the grid is oversampled ×4.9 (0.1° = 0.21 pc at 117.5 pc,
+  against a 1 pc effective dust resolution).
+
+The package reproduces the original Eos analysis bit-for-bit (all 17 output data
+arrays).
+
+## 6. Limitations
+
+* **αG values are upper limits in clumped gas.** 3D dust reconstructions smooth
+  out dense structure. At MBM 40 the Edenhofer map gives n_peak = 74.7 cm⁻³
+  (nearest pixel) and 51.5 cm⁻³ (0.5° aperture), against the published
+  n_H = 280 cm⁻³ (Karoly et al.). That is a density dilution of **3.75–5.4×**.
+  Since αG ∝ 1/n, αG there is overestimated by about that factor, and the same
   applies to any unresolved condensation.
-* **Per-pixel G0 is not a measurement.**
-  * LightCube has a per-voxel signal-to-noise of ~11.5 (robust estimate).
-  * G0 sampled 1.6 pc apart along the sightline correlates at only ρ = 0.44.
-  * Structure in G0_surface at sub-degree scales mostly reflects the boundary
-    surface cutting through that voxel noise (`scripts/g0_diagnose.py`).
-  * **Use the region median**; Eos: 0.493 (5–95%: 0.435–0.554).
-* **alphaG_surface ≈ 2 × alphaG_peak under `half_max`, by construction.** r0 is
-  the half-maximum crossing, so n_surface ≈ n_peak/2 (Eos median 0.988). The two
+* **Per-pixel G0 is noise-dominated.**
+  * LightCube's per-voxel signal-to-noise is **~11.5**.
+  * G0 sampled on two surfaces **1.6 pc apart** along the line of sight
+    correlates at only **ρ = 0.44**.
+  * Sub-degree structure in G0_surface mostly reflects the boundary surface
+    cutting obliquely through that voxel noise (`scripts/g0_diagnose.py`).
+  * **The region median is the usable quantity.**
+* **Chemical steady state is assumed.** αG and the Sternberg/Bialy theory describe
+  H I/H2 equilibrium. That does not hold for every cloud; Eos is net dissociating
+  (Burkhart et al. 2025).
+* **αG_surface ≈ 2 × αG_peak under `half_max`, by construction.** r0 is the
+  half-maximum crossing, so n_surface ≈ n_peak/2 (Eos median 0.988). The two maps
   are not independent measurements.
-* **Edenhofer vs DUSTRIBUTION (column systematic, not used in any map).** Inside
-  the Eos 10% contour (`scripts/column_systematics.py`):
+* **The dust-to-gas conversion** is a single arbitrary scalar (factor 1.63 across
+  the options), and the default sits 34% above standard Bohlin (Section 4).
+* **Edenhofer vs DUSTRIBUTION columns** (`scripts/column_systematics.py`; a
+  systematic, not used in any map). Inside the Eos contour:
 
   | Comparison | Value |
   |---|---|
-  | Edenhofer NH_full (69–260 pc) / DUSTRIBUTION cumulative column (0–350 pc) | 0.27 (per-pixel median 0.29) |
-  | published Eos mass, DUSTRIBUTION / Edenhofer (Burkhart et al. 2025: 5.5e3 vs 1.6e3 M☉) | ~3.4 |
-  | DUSTRIBUTION cumulative extinction / integral of its own median density cube | 2.43 (16–84%: 2.06–2.74) |
+  | Edenhofer NH_full (69–260 pc) / DUSTRIBUTION cumulative column (0–350 pc) | 0.27 |
+  | published Eos mass, DUSTRIBUTION / Edenhofer (Burkhart et al. 2025: 5.5×10³ vs 1.6×10³ M☉) | ~3.4 |
+  | DUSTRIBUTION cumulative extinction / integral of its own median density cube | 2.43 |
   | the two density cubes over the same 69–260 pc | 0.93 |
 
-  Over the same distances the density cubes nearly agree. The ~3–4× gap comes from
-  three things:
-  * a median-of-integrals effect in DUSTRIBUTION, building up entirely inside the
-    cloud (90–140 pc);
+  Over the same distances the two density cubes nearly agree. The ~3–4× gap comes
+  from three things:
+  * a median-of-integrals effect in DUSTRIBUTION, which builds up entirely inside
+    the cloud;
   * foreground dust inside 69 pc, which only DUSTRIBUTION contains;
   * different conversions.
 
-  The disagreement is unresolved. **Use DUSTRIBUTION's cumulative product, not an
-  integral of its median density cube, for columns.**
-* **alphaG assumes H I/H2 chemical steady state.** That does not hold for every
-  cloud; Eos is net dissociating (Burkhart et al. 2025).
-* **Cube extent.** The development cubes are clipped at r = 500 pc. Runs beyond
-  the configured `cube_radius_pc` raise. The unclipped cubes are needed for
-  distant clouds (data/README.md).
-* **The comparison with GALFA H I is sensitive to geometry.** Edenhofer N_H
-  (69–495 pc) / GALFA N_HI is 1.28 against the Eos velocity window
-  (−8.6 to +1.4 km/s), and 0.60 against the full −90..+90 km/s integral.
-  * The window choice moves it within 1.19–1.34.
-  * This is **not** a measurement of the molecular fraction. The 34% excess of
-    the `lightcube` conversion over standard Bohlin could account for all of it.
+  Use DUSTRIBUTION's cumulative product for columns.
+* **The GALFA H I comparison depends on geometry.** Edenhofer N_H / GALFA N_HI is
+  0.60 against the full −90 to +90 km/s integral. It is 1.28 against the Eos
+  velocity window (−8.6 to +1.4 km/s) with rays extended to 495 pc, and the window
+  choice moves that within 1.19–1.34. This is **not** a measurement of the
+  molecular fraction: the 34% Bohlin excess of the default conversion could
+  account for all of it.
+* **Cube extent.** The development cubes are clipped at r = 500 pc. Runs beyond the
+  configured `cube_radius_pc` raise rather than read zeros. Distant clouds need the
+  unclipped cubes ([data/README.md](data/README.md)).
 
-## 6. Verification against Bish et al. (2026)
+## 7. Verification against Bish et al. (2026)
 
 `scripts/verify_lightcube.py`:
 
 | Check | Bish et al. 2026 | This pipeline | Result |
 |---|---|---|---|
-| Solar I_UV (mean, r < 25 pc) | 0.633 (§III.1) | **0.6307** | pass (−0.4%) |
-| Vertical scale height | ~400 pc (§III.3) | **376 pc** (median profile, \|z\| = 0–480 pc) | pass |
-| Ophiuchus / Taurus ISRF over n > 30 cm^-3 | "roughly 3×" (§IV.3) | **4.0** (medians), 5.3 (means) | outside 2–4 in means |
+| Solar I_UV, mean over r < 25 pc | 0.633 (§III.1) | **0.6307** | pass (−0.4%) |
+| Vertical scale height of I_UV | ~400 pc (§III.3) | **376 pc** (median profile, \|z\| = 0–480 pc) | pass |
+| Ophiuchus / Taurus ISRF over n > 30 cm⁻³ | "roughly 3×" (§IV.3) | **4.0** in medians (5.3 in means) | close; depends on cloud volume |
 
-* **Scale height.** The local scale height grows from ~370 pc to 459 pc at larger
-  |z|. That is consistent with the paper's own two reference points (0.633 at the
-  Sun, 12% of Standard at 800 pc), which imply an effective h ≈ 481 pc. The r500
-  clip limits the fit to |z| ≤ 480 pc.
+* **Scale height.** The local scale height grows from ~370 pc to **459 pc** at
+  larger |z|. That is consistent with the paper's own two reference points (0.633
+  at the Sun, 12% of Standard at 800 pc), which imply an effective h ≈ 481 pc. The
+  r = 500 pc cube clip limits the fit to |z| ≤ 480 pc.
 * **Ophiuchus/Taurus.** The ratio is **insensitive to both the conversion option
-  and the density cut** (5.0–5.3 in means across all four conversions and cuts at
-  20, 30 and 40 cm^-3). The remaining difference lies in the cloud volumes:
+  and the density cut**: 5.0–5.3 in means across all four conversions and cuts at
+  20, 30 and 40 cm⁻³. What remains is the cloud volume:
   * Bish et al. do not state theirs.
-  * The check uses the Zucker et al. (2021) Table 1 skeleton extents. These are
-    used there only, not as pipeline boundaries.
+  * This check uses the Zucker et al. (2021) Table 1 skeleton extents, only here
+    and not as pipeline boundaries.
 
-## 7. Worked example: Eos
+## 8. Installation and running
 
 ```bash
+git clone https://github.com/b0burk02/cloudfield.git && cd cloudfield
 pip install -e .
-cp config.example.yaml config.yaml && $EDITOR config.yaml   # set data paths
-cloudfield check-data
-cloudfield run eos --out output/
+cp config.example.yaml config.yaml      # fill in the data paths (data/README.md)
+cloudfield check-data                   # verifies every input, incl. the 0.633 solar test
+cloudfield run eos --out output/        # FITS + PNG in output/
 ```
 
-`cloudfield/clouds/eos.yaml` (abridged):
+The validation scripts in `scripts/` read the same `config.yaml` and the
+`output/` of `cloudfield run eos`.
 
-```yaml
-name: Eos
-grid:   {l: [20, 50], b: [30, 70], pixel: {mode: fixed, deg: 0.1}}
-radial: {r_min: 69.0, r_max: 260.0, dr: 0.25}
-boundary: {method: half_max, window: [90.0, 145.0]}
-region:
-  type: healpix_contour          # FIMS/SPEAR 10% H2/FUV contour (Burkhart+2025 Fig. 1)
-  data_key: fims_h2
-  level: 10.0
-  pick_box: {l: [25, 45], b: [40, 63]}
-  extname: CLOUD_H2_10PCT
-validation_points:
-  - {name: "MBM 40", l: 37.52, b: 44.57, radius_deg: 0.5, published_n_H: 280.0}
-```
+## 9. Adding a new cloud
 
-Eos results inside the 10% contour (32,219 pixels), default conversion:
-
-| | median | 5–95% |
-|---|---|---|
-| G0_surface | 0.493 | 0.435–0.554 |
-| n_peak [cm^-3] | 2.67 | 1.07–9.53 |
-| alphaG_peak | 10.3 | 2.6–28.1 |
-| alphaG_surface | 22.3 | 5.8–57.7 |
-| NH_full [cm^-2] | 2.26e20 | 1.08–3.78e20 |
-| r0 / r_peak / r1 [pc] | 102.5 / 113.8 / 129.5 | |
-
-This refactor reproduces the original single-purpose Eos script's maps
-**bit-for-bit** (all 17 data arrays).
-
-## 8. Adding a new cloud
-
-1. **Write `cloudfield/clouds/<name>.yaml`** (or any path). The fields:
-   * `name`, `distance_pc` (a range, used for the resolution report)
-   * `grid` (`l`, `b`, `pixel`: `{mode: fixed, deg}` or
-     `{mode: physical, pc, ref_distance_pc}`)
-   * `radial` (`r_min`, `r_max`, `dr`); `r_max` must stay inside the cube
-   * `boundary` (method plus parameters; optional `fallback`)
+1. **Write `cloudfield/clouds/<name>.yaml`.** Copy `eos.yaml` and set:
+   * `name`, `distance_pc`
+   * `grid` (l, b and the pixel scale; `{mode: physical, pc, ref_distance_pc}`
+     keeps the physical resolution fixed)
+   * `radial` (r_min, r_max, Δr), staying inside the cubes
+   * `boundary`
    * `region` (`lb_box`, `healpix_contour` or `all`)
-   * `conversion`; optional `annotations`, `validation_points`,
-     `noise_block_xyz_pc`
-2. **For a 3D mask,** read [docs/BOUNDARIES.md](docs/BOUNDARIES.md), Section 4, for
-   exactly what the file must specify. The `mask3d` loader is implemented against
-   the first real file supplied.
-3. **Run it:** `cloudfield run <name>`.
-4. **Check before trusting the output:**
-   * the printed `OVERSAMP`;
-   * the `BOUNDARY_FLAGS` fractions (MULTIPEAK, RPEAK_EDGE, MASK_*);
+   * optional `annotations` and `validation_points`
+2. **For a 3D cloud mask,** [docs/BOUNDARIES.md §4](docs/BOUNDARIES.md) lists
+   exactly what the mask file must specify. The `mask3d` interface and its rules
+   are fixed; the file loader will be implemented against the first real mask.
+3. **Before trusting the output, check:**
+   * the `OVERSAMP` factor;
+   * the `BOUNDARY_FLAGS` fractions printed by the run;
    * the r_peak histogram (no pile-up on the window edge);
-   * adjacent-pixel r0 jumps (`scripts/g0_diagnose.py`);
-   * that `QUAL_NPEAK` covers the region.
+   * adjacent-pixel r0 jumps (`scripts/g0_diagnose.py`).
 
 ## Citing
 
-If you use this code, **cite the data products it is built on**, not just the code:
+**Cite the data products, not just this code:**
 
-* **LightCube:** Bish, H. V., et al. 2026, arXiv:2608.27389.
-* **Edenhofer et al. 2024,** A&A 685, A82 (3D dust).
-* **The dust map you select for any comparison,** e.g. DUSTRIBUTION
-  (Dharmawardena et al.; www.mwdust.com).
-* **The H I-to-H2 theory:** Sternberg et al. 2014, ApJ 790, 10; Bialy & Sternberg
-  2016, ApJ 822, 83.
-* **The extinction curve:** Gordon et al. 2023, ApJ 950, 86.
-* **Eos:** Burkhart et al. 2025.
+* **LightCube:** Bish, H. V., Peek, J. E. G., Zucker, C., et al. 2026,
+  [arXiv:2608.27389](https://arxiv.org/abs/2608.27389).
+* **Edenhofer, G., et al. 2024,** A&A 685, A82 (3D dust;
+  [arXiv:2308.01295](https://arxiv.org/abs/2308.01295)).
+* **Any dust map you use for comparison,** e.g. DUSTRIBUTION (Dharmawardena et
+  al.; [mwdust.com](http://www.mwdust.com)).
+* **Theory:** Sternberg, A., et al. 2014, ApJ 790, 10; Bialy, S. & Sternberg, A.
+  2016, ApJ 822, 83 ([arXiv:1601.02608](https://arxiv.org/abs/1601.02608)).
+* **Extinction curve:** Gordon, K. D., et al. 2023, ApJ 950, 86.
+* **Eos:** Burkhart, B., et al. 2025.
+* **Other references:**
+  * Draine 1978, ApJS 36, 595
+  * Bohlin, Savage & Drake 1978, ApJ 224, 132
+  * Zhang, Green & Rix 2023
+  * Zucker et al. 2021, ApJ 919, 35
+  * Hensley & Draine 2023
+  * Peek et al. 2018 (GALFA-HI DR2)
 
-Other references: Draine 1978, ApJS 36, 595; Bohlin, Savage & Drake 1978,
-ApJ 224, 132; Zhang, Green & Rix 2023; Zucker et al. 2021, ApJ 919, 35; Hensley &
-Draine 2023; Peek et al. 2018 (GALFA-HI DR2).
-
-Software citation: [CITATION.cff](CITATION.cff).
+Software citation: [CITATION.cff](CITATION.cff). License: [BSD-3-Clause](LICENSE).

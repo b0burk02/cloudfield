@@ -72,7 +72,8 @@ quality mask is bit-identical for every conversion option
     alphaG = 0.59 I_UV (100 cm^-3 / n) [9.9 / (1 + 8.9 σ̃_g)]^0.37
            = 59 I_UV / n          for σ̃_g = 1 (σ_g = 1.9e-21 cm², solar metallicity)
 
-(Sternberg et al. 2014; Bialy & Sternberg 2016). I_UV is the free-space FUV
+(Bialy & Sternberg 2016, Eq. 22, for H2 formation on grains; σ̃_g = σ_g/1.9e-21 cm², their Eqs. 5-6;
+Sternberg et al. 2014). I_UV is the free-space FUV
 field in units of the Draine (1978) standard ISRF. n is the total
 hydrogen-nucleus density.
 
