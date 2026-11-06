@@ -1,0 +1,55 @@
+# Eos (Burkhart et al. 2025). Reproduces the original eos_maps.py run bit-for-bit.
+name: Eos
+output_prefix: eos
+distance_pc: [90.0, 145.0]          # used for the resolution report (midpoint) and defaults
+
+# Sky grid. Plate carree in Galactic (l, b); l is stored descending (increases to the left).
+grid:
+  l: [20.0, 50.0]                   # deg
+  b: [30.0, 70.0]                   # deg
+  pixel: {mode: fixed, deg: 0.1}    # alternative: {mode: physical, pc: 0.5, ref_distance_pc: 117.5}
+
+# Radial sampling along each ray from the Sun.
+radial: {r_min: 69.0, r_max: 260.0, dr: 0.25}   # r < 69 pc: no Edenhofer dust
+
+dust_source: edenhofer              # the only allowed map source
+conversion: lightcube               # see cloudfield/conversions.py
+quality: {n_peak_min: 0.3, reference_conversion: lightcube}   # applied in tau units
+
+# Boundary finder (docs/BOUNDARIES.md). Eos is a single clean bump: half_max.
+boundary:
+  method: half_max
+  window: [90.0, 145.0]             # pc, peak-search window
+
+# Where statistics are quoted: the FIMS/SPEAR 10% H2/FUV contour (Burkhart+2025 Fig. 1).
+region:
+  type: healpix_contour
+  data_key: fims_h2                 # path from config.yaml
+  column: SIGNAL
+  level: 10.0
+  context_levels: [15.0, 20.0]      # drawn lighter if reached
+  pick_box: {l: [25.0, 45.0], b: [40.0, 63.0]}
+  label: "FIMS/SPEAR H2/FUV ratio (%)"
+  extname: CLOUD_H2_10PCT
+
+losmean_window_pc: [60.0, 200.0]    # old slab estimator (comparison only)
+noise_block_xyz_pc: [63.5, 47.0, 89.0]   # heliocentric x, y, z of the LightCube noise block
+chunk_rows: 20
+pad: 2
+
+resolution:
+  voxel_pc: 1.0                     # LightCube-grid Edenhofer cube voxel
+  native_ang_deg: 0.23              # Edenhofer+24 angular resolution (approximate; verify)
+
+annotations:
+  - {name: "MBM 40", l: 37.52, b: 44.57, offset: [-55, 22]}
+
+validation_points:
+  - name: "MBM 40"
+    l: 37.52
+    b: 44.57
+    radius_deg: 0.5
+    published_n_H: 280.0            # cm^-3 = 2 n(H2), n(H2) = 140 cm^-3
+    reference: "Karoly et al."
+
+figure: {g0_lim: [0.30, 0.70], margin_deg: 3.0}
