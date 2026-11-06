@@ -1,0 +1,9 @@
+# Versions used for the Eos bit-identical validation (see pyproject.toml).
+numpy==1.21.5
+scipy==1.7.3
+astropy==5.0.4
+matplotlib==3.5.1
+healpy==1.16.6
+reproject==0.13.0
+dust_extinction==1.5
+PyYAML==6.0

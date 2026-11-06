@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cloudfield"
+version = "0.1.0"
+description = "Incident FUV field (G0) and H I-to-H2 alphaG maps for molecular clouds from LightCube + Edenhofer 3D dust"
+readme = "README.md"
+requires-python = ">=3.9"
+# Pinned to the versions the Eos bit-identical validation was run with.
+dependencies = [
+  "numpy==1.21.5",
+  "scipy==1.7.3",
+  "astropy==5.0.4",
+  "matplotlib==3.5.1",
+  "healpy==1.16.6",
+  "reproject==0.13.0",
+  "dust_extinction==1.5",
+  "PyYAML==6.0",
+]
+
+[project.scripts]
+cloudfield = "cloudfield.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cloudfield*"]
+
+[tool.setuptools.package-data]
+cloudfield = ["clouds/*.yaml"]

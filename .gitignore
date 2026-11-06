@@ -1,0 +1,30 @@
+# --- data products: NEVER commit (see data/README.md) ---
+*.fits
+*.fits.gz
+*.fit
+*.fz
+*.npy
+*.npz
+*.out
+*.pkl
+*.h5
+*.hdf5
+*.zarr
+data/*
+!data/README.md
+eos-data/
+cubes/
+# local config with data paths
+config.yaml
+# run outputs
+output/
+*.png
+!docs/*.png
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.ipynb_checkpoints/
+.DS_Store

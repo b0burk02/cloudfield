@@ -1,0 +1,19 @@
+# Copy to config.yaml (gitignored) and fill in. See data/README.md for what each file is.
+# Relative paths resolve against $CLOUDFIELD_DATA, else against this file's directory.
+data:
+  # REQUIRED
+  lightcube: /path/to/ISRF_StandardUV_1pc-res.fits        # combined 912-2000 A, BUNIT 'Draine78 ISRF'
+  edenhofer_tau: /path/to/Edenhofer_tau_per_pc_1565_1pc-res.fits   # tau_1565/pc on the LightCube grid
+  # OPTIONAL: Eos region contour
+  fims_h2: /path/to/FIMS_SPEAR/UV_H2/f03c.fits
+  # OPTIONAL: column comparison only (scripts/column_systematics.py)
+  dustribution_density: /path/to/gpy_dens_median.out
+  dustribution_cumulative: /path/to/ext_med_cube.pkl.npy
+  # OPTIONAL: Eos validation scripts (scripts/hi_check.py)
+  galfa_nhi: /path/to/GALFA-HI_NHISRCORR_VLSR-90+90kms.fits
+  galfa_cube: /path/to/GALFAmosaic_newhd.GAL.fits
+  galfa_check: /path/to/GALFAmosaic_newhd.GAL.HI_col.fits
+
+# If the cubes are clipped to a sphere (e.g. the r500 products), give its radius in pc:
+# runs whose rays go beyond it raise instead of silently reading zeros.
+# cube_radius_pc: 500
